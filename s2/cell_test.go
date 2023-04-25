@@ -88,6 +88,74 @@ func TestCellFaces(t *testing.T) {
 	}
 }
 
+func TestCellUVCoordOfEdge(t *testing.T) {
+	// Four cells on face 0 with two boundaries each on 0/0.
+	cell0 := []Cell{
+		CellFromCellID(CellIDFromToken("0f")),
+		CellFromCellID(CellIDFromToken("05")),
+		CellFromCellID(CellIDFromToken("1b")),
+		CellFromCellID(CellIDFromToken("11")),
+	}
+
+	// And four cells on face 4 which is rotated w.r.t face 0.
+	cell4 := []Cell{
+		CellFromCellID(CellIDFromToken("8f")),
+		CellFromCellID(CellIDFromToken("85")),
+		CellFromCellID(CellIDFromToken("9b")),
+		CellFromCellID(CellIDFromToken("91")),
+	}
+
+	for k := 0; k < 4; k++ {
+		if got, want := cell0[k].UVCoordOfEdge(k+0), 0.0; !float64Eq(got, want) {
+			t.Errorf("%v.UVCoordOfEdge[%d] = %f, want %f", cell4[k], k+0, got, want)
+		}
+		if got, want := cell0[k].UVCoordOfEdge(k+1), 0.0; !float64Eq(got, want) {
+			t.Errorf("%v.UVCoordOfEdge[%d] = %f, want %f", cell4[k], k+1, got, want)
+		}
+		if got, want := cell4[k].UVCoordOfEdge(k+0), 0.0; !float64Eq(got, want) {
+			t.Errorf("%v.UVCoordOfEdge[%d] = %f, want %f", cell4[k], k+1, got, want)
+		}
+		if got, want := cell4[k].UVCoordOfEdge(k+1), 0.0; !float64Eq(got, want) {
+			t.Errorf("%v.UVCoordOfEdge[%d] = %f, want %f", cell4[k], k+1, got, want)
+		}
+	}
+}
+
+func Test2CellIJCoordOfEdge(t *testing.T) {
+	for i := 0; i < 100; i++ {
+		id := randomCellID()
+		cell := CellFromCellID(id)
+
+		// Look up the canonical IJ coordinates of the cell boundary.
+		var ij [2]int
+		_, ij[0], ij[1], _ = id.faceIJOrientation()
+
+		ijSize := sizeIJ(id.Level())
+		var ijBounds r2.Rect
+		ijLo := ij[0] & -ijSize
+		ijBounds.X.Lo = float64(ijLo)
+		ijBounds.X.Hi = float64(ijLo + ijSize)
+
+		ijLo = ij[1] & -ijSize
+		ijBounds.Y.Lo = float64(ijLo)
+		ijBounds.Y.Hi = float64(ijLo + ijSize)
+
+		// Check that each boundary coordinate is correct.
+		for k := 0; k < 4; k++ {
+			got := cell.IJCoordOfEdge(k)
+			var want int
+			if (k+1)%2 == 0 {
+				want = int(ijBounds.Vertices()[k].X)
+			} else {
+				want = int(ijBounds.Vertices()[k].Y)
+			}
+			if got != want {
+				t.Errorf("%v.IJCoordOfEdge(%d) = %v, want %v", cell, k, got, want)
+			}
+		}
+	}
+}
+
 func TestCellChildren(t *testing.T) {
 	testCellChildren(t, CellFromCellID(CellIDFromFace(0)))
 	testCellChildren(t, CellFromCellID(CellIDFromFace(3)))
