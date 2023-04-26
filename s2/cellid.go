@@ -203,6 +203,7 @@ func (ci CellID) Children() [4]CellID {
 	return ch
 }
 
+// sizeIJ reports the edge length of cells at the given level in (i,j)-space.
 func sizeIJ(level int) int {
 	return 1 << uint(MaxLevel-level)
 }
@@ -222,9 +223,9 @@ func (ci CellID) EdgeNeighbors() [4]CellID {
 	}
 }
 
-// VertexNeighbors returns the neighboring cellIDs with vertex closest to this cell at the given level.
-// (Normally there are four neighbors, but the closest vertex may only have three neighbors if it is one of
-// the 8 cube vertices.)
+// VertexNeighbors returns the cellIDs of the neighbors of the closest vertex to
+// this cell at the given level. Normally there are four neighbors, but the closest
+// vertex may only have three neighbors if it is one of the 8 cube vertices.
 func (ci CellID) VertexNeighbors(level int) []CellID {
 	halfSize := sizeIJ(level + 1)
 	size := halfSize << 1
@@ -625,19 +626,6 @@ func cellIDFromFaceIJSame(f, i, j int, sameFace bool) CellID {
 		return cellIDFromFaceIJ(f, i, j)
 	}
 	return cellIDFromFaceIJWrap(f, i, j)
-}
-
-// ijToSTMin converts the i- or j-index of a leaf cell to the minimum corresponding
-// s- or t-value contained by that cell. The argument must be in the range
-// [0..2**30], i.e. up to one position beyond the normal range of valid leaf
-// cell indices.
-func ijToSTMin(i int) float64 {
-	return float64(i) / float64(MaxSize)
-}
-
-// stToIJ converts value in ST coordinates to a value in IJ coordinates.
-func stToIJ(s float64) int {
-	return clampInt(int(math.Floor(MaxSize*s)), 0, MaxSize-1)
 }
 
 // cellIDFromPoint returns a leaf cell containing point p. Usually there is

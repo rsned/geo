@@ -21,25 +21,74 @@ import (
 	"github.com/golang/geo/r3"
 )
 
-func TestSTUV(t *testing.T) {
-	if x := stToUV(uvToST(.125)); x != .125 {
-		t.Error("stToUV(uvToST(.125) == ", x)
-	}
-	if x := uvToST(stToUV(.125)); x != .125 {
-		t.Error("uvToST(stToUV(.125) == ", x)
+// TODO(rsned): Rename this file to coords_test.go to match its C++ counterpart.
+
+func swapAxes(ij int) int {
+	return ((ij >> 1) & 1) + ((ij & 1) << 1)
+}
+
+func invertBits(ij int) int {
+	return ij ^ 3
+}
+
+func TestSTUVTraversalOrder(t *testing.T) {
+	for r := 0; r < 4; r++ {
+		for i := 0; i < 4; i++ {
+			// Check consistency with respect to swapping axes.
+			if got, want := ijToPos[r][i], ijToPos[r^swapMask][swapAxes(i)]; got != want {
+				t.Errorf("(ijToPos[%d][%d] = %d) != ijToPos[%d^swapMask][swapAxes(%d)] = %d",
+					r, i, got, r, i, want)
+			}
+			if got, want := posToIJ[r][i], swapAxes(posToIJ[r^swapMask][i]); got != want {
+				t.Errorf("(posToIJ[%d][%d] = %d) != swapAxes(posToIJ[%d^swapMask][%d]) = %d",
+					r, i, got, r, i, want)
+			}
+
+			// Check consistency with respect to reversing axis directions.
+			if got, want := ijToPos[r][i], ijToPos[r^invertMask][invertBits(i)]; got != want {
+				t.Errorf("(ijToPos[%d][%d]= %d) != ijToPos[%d^invertMask][invertBits(%d)] = %d",
+					r, i, got, r, i, want)
+			}
+			if got, want := posToIJ[r][i], invertBits(posToIJ[r^invertMask][i]); got != want {
+				t.Errorf("(posToIJ[%d][%d] = %d) != invertBits(posToIJ[%d^invertMask][%d] = %d",
+					r, i, got, r, i, want)
+			}
+
+			// Check that the two tables are inverses of each other.
+			if got, want := ijToPos[r][posToIJ[r][i]], i; got != want {
+				t.Errorf("(ijToPos[%d][posToIJ[%d][%d]] = %d) != %d",
+					r, r, i, got, want)
+			}
+			if got, want := posToIJ[r][ijToPos[r][i]], i; got != want {
+				t.Errorf("(posToIJ[%d][ijToPos[%d][%d]] = %d) != %d",
+					r, r, i, got, want)
+			}
+		}
 	}
 }
 
-func TestUVNorms(t *testing.T) {
-	step := 1 / 1024.0
-	for face := 0; face < 6; face++ {
-		for x := -1.0; x <= 1; x += step {
-			if !float64Eq(float64(faceUVToXYZ(face, x, -1).Cross(faceUVToXYZ(face, x, 1)).Angle(uNorm(face, x))), 0.0) {
-				t.Errorf("UNorm not orthogonal to the face(%d)", face)
-			}
-			if !float64Eq(float64(faceUVToXYZ(face, -1, x).Cross(faceUVToXYZ(face, 1, x)).Angle(vNorm(face, x))), 0.0) {
-				t.Errorf("VNorm not orthogonal to the face(%d)", face)
-			}
+func TestSTUVConversions(t *testing.T) {
+	// Check boundary conditions.
+	for s := 0.0; s <= 1.0; s += 0.5 {
+		u := stToUV(s)
+		if want := 2*s - 1; !float64Eq(u, want) {
+			t.Errorf("stToUV(%f) = %f, want %f", s, u, want)
+		}
+	}
+	for u := -1.0; u <= 1.0; u++ {
+		s := uvToST(u)
+		if want := 0.5 * (u + 1); !float64Eq(s, want) {
+			t.Errorf("stToUV(%f) = %f, want %f", u, s, want)
+		}
+	}
+
+	// Check that uvToST and stToUV are inverses.
+	for x := 0.0; x <= 1.0; x += 0.0001 {
+		if got := uvToST(stToUV(x)); !float64Near(got, x, 1e-15) {
+			t.Errorf("uvToST(stToUV(%f)) = %f, want %f", x, got, x)
+		}
+		if got, want := stToUV(uvToST(2*x-1)), 2*x-1; !float64Near(got, want, 1e-15) {
+			t.Errorf("stToUV(uvToST(%f)) = %f, want %f", x, got, want)
 		}
 	}
 }
@@ -168,37 +217,6 @@ func TestFaceXYZtoUVW(t *testing.T) {
 	}
 }
 
-func TestUVWAxis(t *testing.T) {
-	for face := 0; face < 6; face++ {
-		// Check that the axes are consistent with faceUVtoXYZ.
-		if faceUVToXYZ(face, 1, 0).Sub(faceUVToXYZ(face, 0, 0)) != uAxis(face).Vector {
-			t.Errorf("face 1,0 - face 0,0 should equal uAxis")
-		}
-		if faceUVToXYZ(face, 0, 1).Sub(faceUVToXYZ(face, 0, 0)) != vAxis(face).Vector {
-			t.Errorf("faceUVToXYZ(%d, 0, 1).Sub(faceUVToXYZ(%d, 0, 0)) != vAxis(%d), should be equal.", face, face, face)
-		}
-		if faceUVToXYZ(face, 0, 0) != unitNorm(face).Vector {
-			t.Errorf("faceUVToXYZ(%d, 0, 0) != unitNorm(%d), should be equal", face, face)
-		}
-
-		// Check that every face coordinate frame is right-handed.
-		if got := uAxis(face).Vector.Cross(vAxis(face).Vector).Dot(unitNorm(face).Vector); got != 1 {
-			t.Errorf("right-handed check failed. got %f, want 1", got)
-		}
-
-		// Check that GetUVWAxis is consistent with GetUAxis, GetVAxis, GetNorm.
-		if uAxis(face) != uvwAxis(face, 0) {
-			t.Errorf("uAxis(%d) != uvwAxis(%d, 0), should be equal", face, face)
-		}
-		if vAxis(face) != uvwAxis(face, 1) {
-			t.Errorf("vAxis(%d) != uvwAxis(%d, 1), should be equal", face, face)
-		}
-		if unitNorm(face) != uvwAxis(face, 2) {
-			t.Errorf("unitNorm(%d) != uvwAxis(%d, 2), should be equal", face, face)
-		}
-	}
-}
-
 func TestSiTiSTRoundtrip(t *testing.T) {
 	// test int -> float -> int direction.
 	for i := 0; i < 1000; i++ {
@@ -214,20 +232,6 @@ func TestSiTiSTRoundtrip(t *testing.T) {
 		// when scaling down to the nearest 1/MaxLevel and back.
 		if got := siTiToST(stToSiTi(st)); !float64Near(got, st, 1e-8) {
 			t.Errorf("siTiToST(stToSiTi(%v)) = %v, want %v", st, got, st)
-		}
-	}
-}
-
-func TestUVWFace(t *testing.T) {
-	// Check that uvwFace is consistent with uvwAxis.
-	for f := 0; f < 6; f++ {
-		for axis := 0; axis < 3; axis++ {
-			if got, want := face(uvwAxis(f, axis).Mul(-1)), uvwFace(f, axis, 0); got != want {
-				t.Errorf("face(%v) in positive direction = %v, want %v", uvwAxis(f, axis).Mul(-1), got, want)
-			}
-			if got, want := face(uvwAxis(f, axis).Vector), uvwFace(f, axis, 1); got != want {
-				t.Errorf("face(%v) in negative direction = %v, want %v", uvwAxis(f, axis), got, want)
-			}
 		}
 	}
 }
@@ -355,6 +359,65 @@ func TestSTUVFace(t *testing.T) {
 	for _, test := range tests {
 		if got := face(test.v); got != test.want {
 			t.Errorf("face(%v) = %d, want %d", test.v, got, test.want)
+		}
+	}
+}
+
+func TestUVNorms(t *testing.T) {
+	step := 1 / 1024.0
+	for face := 0; face < 6; face++ {
+		for x := -1.0; x <= 1; x += step {
+			if !float64Eq(float64(faceUVToXYZ(face, x, -1).Cross(faceUVToXYZ(face, x, 1)).Angle(uNorm(face, x))), 0.0) {
+				t.Errorf("UNorm not orthogonal to the face(%d)", face)
+			}
+			if !float64Eq(float64(faceUVToXYZ(face, -1, x).Cross(faceUVToXYZ(face, 1, x)).Angle(vNorm(face, x))), 0.0) {
+				t.Errorf("VNorm not orthogonal to the face(%d)", face)
+			}
+		}
+	}
+}
+
+func TestUVWAxis(t *testing.T) {
+	for face := 0; face < 6; face++ {
+		// Check that the axes are consistent with faceUVtoXYZ.
+		if faceUVToXYZ(face, 1, 0).Sub(faceUVToXYZ(face, 0, 0)) != uAxis(face).Vector {
+			t.Errorf("face 1,0 - face 0,0 should equal uAxis")
+		}
+		if faceUVToXYZ(face, 0, 1).Sub(faceUVToXYZ(face, 0, 0)) != vAxis(face).Vector {
+			t.Errorf("faceUVToXYZ(%d, 0, 1).Sub(faceUVToXYZ(%d, 0, 0)) != vAxis(%d), should be equal.", face, face, face)
+		}
+		if faceUVToXYZ(face, 0, 0) != unitNorm(face).Vector {
+			t.Errorf("faceUVToXYZ(%d, 0, 0) != unitNorm(%d), should be equal", face, face)
+		}
+
+		// Check that every face coordinate frame is right-handed.
+		if got := uAxis(face).Vector.Cross(vAxis(face).Vector).Dot(unitNorm(face).Vector); got != 1 {
+			t.Errorf("right-handed check failed. got %f, want 1", got)
+		}
+
+		// Check that GetUVWAxis is consistent with GetUAxis, GetVAxis, GetNorm.
+		if uAxis(face) != uvwAxis(face, 0) {
+			t.Errorf("uAxis(%d) != uvwAxis(%d, 0), should be equal", face, face)
+		}
+		if vAxis(face) != uvwAxis(face, 1) {
+			t.Errorf("vAxis(%d) != uvwAxis(%d, 1), should be equal", face, face)
+		}
+		if unitNorm(face) != uvwAxis(face, 2) {
+			t.Errorf("unitNorm(%d) != uvwAxis(%d, 2), should be equal", face, face)
+		}
+	}
+}
+
+func TestUVWFace(t *testing.T) {
+	// Check that uvwFace is consistent with uvwAxis.
+	for f := 0; f < 6; f++ {
+		for axis := 0; axis < 3; axis++ {
+			if got, want := face(uvwAxis(f, axis).Mul(-1)), uvwFace(f, axis, 0); got != want {
+				t.Errorf("face(%v) in positive direction = %v, want %v", uvwAxis(f, axis).Mul(-1), got, want)
+			}
+			if got, want := face(uvwAxis(f, axis).Vector), uvwFace(f, axis, 1); got != want {
+				t.Errorf("face(%v) in negative direction = %v, want %v", uvwAxis(f, axis), got, want)
+			}
 		}
 	}
 }
