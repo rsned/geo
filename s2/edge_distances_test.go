@@ -346,6 +346,13 @@ func TestEdgeDistancesInterpolate(t *testing.T) {
 		// A zero-length edge.
 		{p1, p1, 0, p1},
 		{p1, p1, 1, p1},
+
+		// Zero-length edges, actually interpolated.
+		{PointFromCoords(1, 0, 0), PointFromCoords(1, 0, 0), 0.5, PointFromCoords(1, 0, 0)},
+		{PointFromCoords(1, 0, 0), PointFromCoords(1, 0, 0), math.SmallestNonzeroFloat64, PointFromCoords(1, 0, 0)},
+		{p1, p1, 0.5, p1},
+		{p1, p1, math.SmallestNonzeroFloat64, p1},
+
 		// Start, end, and middle of a medium-length edge.
 		{p1, p2, 0, p1},
 		{p1, p2, 1, p2},
