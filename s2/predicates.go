@@ -677,6 +677,217 @@ func exactCompareDistance(x, y r3.PreciseVector, r2 *big.Float) int {
 	return xySign * cmp.Sign()
 }
 
+// SignDotProd reports the exact sign of the dot product between A and B.
+//
+// REQUIRES: |a|^2 <= 2 and |b|^2 <= 2
+func SignDotProd(a, b Point) int {
+	sign := triageSignDotProd(a, b)
+	if sign != 0 {
+		return sign
+	}
+
+	// big.Float.Sign() returns -1/0/+1 already, so the C++
+	// ExactSignDotProd is not necessary.
+	return r3.PreciseVectorFromVector(a.Vector).Dot(r3.PreciseVectorFromVector(b.Vector)).Sign()
+}
+
+func triageSignDotProd(a, b Point) int {
+	// The dot product error can be bound as 1.01nu|a||b| assuming nu < .01,
+	// where u is the rounding unit (epsilon/2).  n=3 because we have 3
+	// components, and we require that our vectors be <= sqrt(2) in length (so
+	// that we can support the un-normalized edge normals for cells).
+	//
+	// So we have 1.01*3*ε/2*2 = 3.03ε, which we'll round up to 3.046875ε
+	// which is exactly representable.
+	//
+	// Reference:
+	//   Error Estimation Of Floating-Point Summation And Dot Product, Rump
+	//   2011
+	const maxError = 3.046875 * epsilon
+
+	na := a.Dot(b.Vector)
+	if math.Abs(na) <= maxError {
+		return 0
+	}
+
+	if na > 0 {
+		return 1
+	}
+	return -1
+}
+
+// Gappa proof for TriageIntersectionOrdering
+//
+// # Use IEEE754 double precision, round-to-nearest by default.
+// @rnd = float<ieee_64, ne>;
+//
+// # Five vectors, two forming edges AB, CD and two normals N,M for great
+// # circles.
+// a0 = rnd(a0_ex);
+// a1 = rnd(a1_ex);
+// a2 = rnd(a2_ex);
+// b0 = rnd(b0_ex);
+// b1 = rnd(b1_ex);
+// b2 = rnd(b2_ex);
+// c0 = rnd(c0_ex);
+// c1 = rnd(c1_ex);
+// c2 = rnd(c2_ex);
+// d0 = rnd(d0_ex);
+// d1 = rnd(d1_ex);
+// d2 = rnd(d2_ex);
+// n0 = rnd(n0_ex);
+// n1 = rnd(n1_ex);
+// n2 = rnd(n2_ex);
+// m0 = rnd(m0_ex);
+// m1 = rnd(m1_ex);
+// m2 = rnd(m2_ex);
+//
+// # (AxB)xN     =  (N*A)B - (N*B)*A         -- Lagrange's formula
+// # ((AxB)xN)*M = ((N*A)B - (N*B)*A)*M
+// #             = (N*A)(M*B) - (X*B)(M*A)
+//
+// ndota_ rnd = n0*a0 + n1*a1 + n2*a2;
+// ndotb_ rnd = n0*b0 + n1*b1 + n2*b2;
+// mdota_ rnd = m0*a0 + m1*a1 + m2*a2;
+// mdotb_ rnd = m0*b0 + m1*b1 + m2*b2;
+// prod0_ rnd = ndota_*mdotb_ - ndotb_*mdota_;
+//
+// ndotc_ rnd = n0*c0 + n1*c1 + n2*c2;
+// ndotd_ rnd = n0*d0 + n1*d1 + n2*d2;
+// mdotc_ rnd = m0*c0 + m1*c1 + m2*c2;
+// mdotd_ rnd = m0*d0 + m1*d1 + m2*d2;
+// prod1_ rnd = ndotc_*mdotd_ - ndotd_*mdotc_;
+//
+// diff_ rnd = prod1_ - prod0_;
+//
+// # Compute it all again in exact arithmetic.
+// ndota = n0*a0 + n1*a1 + n2*a2;
+// ndotb = n0*b0 + n1*b1 + n2*b2;
+// mdota = m0*a0 + m1*a1 + m2*a2;
+// mdotb = m0*b0 + m1*b1 + m2*b2;
+// prod0 = ndota*mdotb - ndotb*mdota;
+//
+// ndotc = n0*c0 + n1*c1 + n2*c2;
+// ndotd = n0*d0 + n1*d1 + n2*d2;
+// mdotc = m0*c0 + m1*c1 + m2*c2;
+// mdotd = m0*d0 + m1*d1 + m2*d2;
+// prod1 = ndotc*mdotd - ndotd*mdotc;
+//
+// diff = prod1 - prod0;
+//
+// {
+//   # A,B,C, and D are meant to be normalized S2Point values, so their
+//   # magnitude will be at most 1.  M and N are allowed to be unnormalized cell
+//   # edge normals, so their magnitude can be up to sqrt(2).  In each case the
+//   # components will be at most one.
+//      a0 in [-1, 1]
+//   /\ a1 in [-1, 1]
+//   /\ a2 in [-1, 1]
+//   /\ b0 in [-1, 1]
+//   /\ b1 in [-1, 1]
+//   /\ b2 in [-1, 1]
+//   /\ c0 in [-1, 1]
+//   /\ c1 in [-1, 1]
+//   /\ c2 in [-1, 1]
+//   /\ d0 in [-1, 1]
+//   /\ d1 in [-1, 1]
+//   /\ d2 in [-1, 1]
+//
+//   /\ n0 in [-1, 1]
+//   /\ n1 in [-1, 1]
+//   /\ n2 in [-1, 1]
+//   /\ m0 in [-1, 1]
+//   /\ m1 in [-1, 1]
+//   /\ m2 in [-1, 1]
+//
+//   # We always dot an unnormalized normal against a normalized point so the
+//   # magnitude of the dot product in each case is bounded by sqrt(2).
+//   /\ |ndota_| in [0, 1.4142135623730954]
+//   /\ |ndotb_| in [0, 1.4142135623730954]
+//   /\ |ndotc_| in [0, 1.4142135623730954]
+//   /\ |ndotd_| in [0, 1.4142135623730954]
+//
+//   /\ |mdota_| in [0, 1.4142135623730954]
+//   /\ |mdotb_| in [0, 1.4142135623730954]
+//   /\ |mdotc_| in [0, 1.4142135623730954]
+//   /\ |mdotd_| in [0, 1.4142135623730954]
+//
+//   ->
+//   |diff_ - diff| in ?
+// }
+//
+// > gappa proof.gappa
+// Results:
+//|  diff_ - diff| in [0, 1145679351550454559b-107 {7.06079e-15, 2^(-47.0091)}]
+//
+// >>> 1145679351550454559*2**-107/2**-52
+// 31.79898987322334
+
+// Gappa proof for TriageCircleEdgeIntersectionSign
+//
+// # Use IEEE754 double precision, round-to-nearest by default.
+// @rnd = float<ieee_64, ne>;
+//
+// # Four vectors, two forming an edge AB and two normals (X,Y) for great
+// circles. a0 = rnd(a0_ex); a1 = rnd(a1_ex); a2 = rnd(a2_ex); b0 =
+// rnd(b0_ex); b1 = rnd(b1_ex); b2 = rnd(b2_ex); n0 = rnd(n0_ex); n1 =
+// rnd(n1_ex); n2 = rnd(n2_ex); x0 = rnd(x0_ex); x1 = rnd(x1_ex); x2 =
+// rnd(x2_ex);
+//
+// # (AxB)xX     =  (X*A)B - (X*B)*A         -- Lagrange's formula
+// # ((AxB)xX)*Y = ((X*A)B - (X*B)*A)*Y
+// #             = (X*A)(Y*B) - (X*B)(Y*A)
+//
+// ndota_ rnd = n0*a0 + n1*a1 + n2*a2;
+// ndotb_ rnd = n0*b0 + n1*b1 + n2*b2;
+// xdota_ rnd = x0*a0 + x1*a1 + x2*a2;
+// xdotb_ rnd = x0*b0 + x1*b1 + x2*b2;
+// diff_  rnd = ndota_*xdotb_ - ndotb_*xdota_;
+//
+// # Compute it all again in exact arithmetic.
+// ndota = n0*a0 + n1*a1 + n2*a2;
+// ndotb = n0*b0 + n1*b1 + n2*b2;
+// xdota = x0*a0 + x1*a1 + x2*a2;
+// xdotb = x0*b0 + x1*b1 + x2*b2;
+// diff  = ndota*xdotb - ndotb*xdota;
+//
+// {
+//   # A and B are meant to be normalized S2Point values, so their magnitude
+//   will # be at most 1.  X and Y are allowed to be unnormalized cell edge
+//   normals, so # their magnitude can be up to sqrt(2).  In each case the
+//   components will be # at most one.
+//      a0 in [-1, 1]
+//   /\ a1 in [-1, 1]
+//   /\ a2 in [-1, 1]
+//   /\ b0 in [-1, 1]
+//   /\ b1 in [-1, 1]
+//   /\ b2 in [-1, 1]
+//   /\ n0 in [-1, 1]
+//   /\ n1 in [-1, 1]
+//   /\ n2 in [-1, 1]
+//   /\ x0 in [-1, 1]
+//   /\ x1 in [-1, 1]
+//   /\ x2 in [-1, 1]
+//
+//   # We always dot an unnormalized normal against a normalized point so the
+//   # magnitude of the dot product in each case is bounded by sqrt(2).
+//   /\ |ndota_| in [0, 1.4142135623730954]
+//   /\ |ndotb_| in [0, 1.4142135623730954]
+//   /\ |xdota_| in [0, 1.4142135623730954]
+//   /\ |xdotb_| in [0, 1.4142135623730954]
+//
+//   ->
+//   |diff_ - diff| in ?
+// } 6ms
+//
+// > gappa proof.gappa
+// Results:
+//   |diff_ - diff| in [0, 1001564163474598623b-108 {3.08631e-15,
+//   2^(-48.2031)}]
+//
+// >>> 1001564163474598623*2**-108/2**-52
+// 13.89949493661167
+
 // TODO(roberts): Differences from C++
 // CompareEdgeDistance
 // CompareEdgeDirections

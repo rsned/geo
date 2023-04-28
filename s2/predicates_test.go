@@ -937,6 +937,67 @@ func TestPredicatesCompareDistanceConsistency(t *testing.T) {
 	}
 }
 
+// Verifies that SignDotProd(a, b) == expected, and that the minimum
+// required precision is "expected_prec".
+func TestPredicatesSignDotProd(t *testing.T) {
+	tests := []struct {
+		a, b      Point
+		want      int
+		precision string
+	}{
+		{
+			// Orthogonal
+			a:         PointFromCoords(1, 0, 0),
+			b:         PointFromCoords(0, 1, 0),
+			want:      0,
+			precision: "EXACT",
+		},
+		{
+			//  NearlyOrthogonalPositive
+			a:         PointFromCoords(1, 0, 0),
+			b:         PointFromCoords(dblEpsilon, 1, 0),
+			want:      1,
+			precision: "EXACT",
+		},
+		{
+			//  NearlyOrthogonalPositive
+			a:         PointFromCoords(1, 0, 0),
+			b:         PointFromCoords(1e-45, 1, 0),
+			want:      1,
+			precision: "EXACT",
+		},
+		{
+			// NearlyOrthogonalNegative
+			a:         PointFromCoords(1, 0, 0),
+			b:         PointFromCoords(-dblEpsilon, 1, 0),
+			want:      -1,
+			precision: "EXACT",
+		},
+		{
+			// NearlyOrthogonalNegative
+			a:         PointFromCoords(1, 0, 0),
+			b:         PointFromCoords(-1e-45, 1, 0),
+			want:      -1,
+			precision: "EXACT",
+		},
+	}
+
+	for _, test := range tests {
+		got := SignDotProd(test.a, test.b)
+		if got != test.want {
+			t.Errorf("SignDotProd(%+v, %+v) = %d, wnat %d", test.a, test.b, got, test.want)
+		}
+
+		gotPrec := "EXACT"
+		if triageSignDotProd(test.a, test.b) != 0 {
+			gotPrec = "DOUBLE"
+		}
+		if test.precision != gotPrec {
+			t.Errorf("triageSignDotProd precision = %q, wanted %q", gotPrec, test.precision)
+		}
+	}
+}
+
 func BenchmarkSign(b *testing.B) {
 	p1 := Point{r3.Vector{-3, -1, 4}}
 	p2 := Point{r3.Vector{2, -1, -3}}
