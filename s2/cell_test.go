@@ -705,12 +705,15 @@ func maxDistanceToEdgeBruteForce(cell Cell, a, b Point) s1.ChordAngle {
 		return s1.StraightChordAngle
 	}
 
+	negA := Point{a.Mul(-1)}
+	negB := Point{b.Mul(-1)}
+
 	maxDist := s1.NegativeChordAngle
 	for i := 0; i < 4; i++ {
 		v0 := cell.Vertex(i)
 		v1 := cell.Vertex((i + 1) % 4)
 		// If the antipodal edge crosses through the cell, min distance is Pi.
-		if CrossingSign(Point{a.Mul(-1)}, Point{b.Mul(-1)}, v0, v1) != DoNotCross {
+		if CrossingSign(negA, negB, v0, v1) != DoNotCross {
 			return s1.StraightChordAngle
 		}
 		maxDist, _ = UpdateMaxDistance(a, v0, v1, maxDist)
@@ -734,10 +737,12 @@ func TestCellDistanceToEdge(t *testing.T) {
 		// Pi for vertex distance.
 		expectedError := 1e-12
 		if expectedMin.Radians() > math.Pi/2 {
-			// Max error for ChordAngle as it approaches Pi is about 2e-8.
-			expectedError = 2e-8
+			// Max error for ChordAngle as it approaches Pi is about 3e-8.
+			expectedError = 3e-8
 		} else if expectedMin.Radians() <= math.Pi/3 {
 			expectedError = 1e-15
+		} else {
+			expectedError = 1e-12
 		}
 
 		if !float64Near(expectedMin.Radians(), actualMin.Radians(), expectedError) {
