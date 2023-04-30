@@ -218,9 +218,9 @@ S2LoopMeasures                   | ❌
 S2Measures                       | ✅
 S2MemoryTracker                  | ❌
 S2Metrics                        | ❌
-S2PointUtil                      | 🟡
+S2PointUtil                      | 🟡 
 S2PolygonBuilder                 | ❌
-S2PolylineAlignment              | ❌
+S2PolylineAlignment              | 🟡
 S2PolylineMeasures               | ✅
 S2PolylineSimplifier             | ❌
 S2Predicates                     | ✅

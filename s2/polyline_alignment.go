@@ -17,14 +17,15 @@ package s2
 
 import (
 	"bytes"
+	"fmt"
 	"math"
 )
 
-// This library provides code to compute vertex alignments between S2Polylines.
+// This library provides code to compute vertex alignments between Polylines.
 //
 // A vertex "alignment" or "warp" between two polylines is a matching between
 // pairs of their vertices. Users can imagine pairing each vertex from
-// S2Polyline `a` with at least one other vertex in S2Polyline `b`. The "cost"
+// Polyline `a` with at least one other vertex in Polyline `b`. The "cost"
 // of an arbitrary alignment is defined as the summed value of the squared
 // chordal distance between each pair of points in the warp path. An "optimal
 // alignment" for a pair of polylines is defined as the alignment with least
@@ -33,7 +34,7 @@ import (
 // `Dynamic Timewarp` algorithm.
 //
 // We provide three methods for computing (via Dynamic Timewarp) the optimal
-// alignment between two S2Polylines. These methods are performance-sensitive,
+// alignment between two Polylines. These methods are performance-sensitive,
 // and have been reasonably optimized for space- and time- usage. On modern
 // hardware, it is possible to compute exact alignments between 4096x4096
 // element polylines in ~70ms, and approximate alignments much more quickly.
@@ -195,8 +196,32 @@ func windowFromStrides(strides []columnStride) *window {
 // TODO(rsned): Add windowFromWarpPath
 
 // isValid reports if this windows data represents a valid window.
+//
+// Valid Windows require the following structural conditions to hold:
+//  1. All rows must consist of a single contiguous stride of `true` values.
+//  2. All strides are greater than zero length (i.e. no empty rows).
+//  3. The index of the first `true` column in a row must be at least as
+//     large as the index of the first `true` column in the previous row.
+//  4. The index of the last `true` column in a row must be at least as large
+//     as the index of the last `true` column in the previous row.
+//  5. strides[0].start = 0 (the first cell is always filled).
+//  6. strides[n_rows-1].end = n_cols (the last cell is filled).
 func (w *window) isValid() bool {
-	return false
+	if w.rows <= 0 || w.cols <= 0 || len(w.strides) == 0 ||
+		w.strides[0].start != 0 || w.strides[len(w.strides)-1].end != w.cols {
+		return false
+	}
+
+	var prev = columnStride{-1, -1}
+	for _, curr := range w.strides {
+		if curr.end <= curr.start || curr.start < prev.start ||
+			curr.end < prev.end {
+			return false
+		}
+		prev = curr
+	}
+	return true
+
 }
 
 func (w *window) columnStride(row int) columnStride {
@@ -287,7 +312,197 @@ func halfResolution(p *Polyline) *Polyline {
 	return &p2
 }
 
+// warpPath represents a pairing between vertex
+// a.vertex(i) and vertex b.vertex(j) in the optimal alignment.
+// The warpPath is defined in forward order, such that the result of
+// aligning polylines `a` and `b` is always a warpPath with warpPath[0] = {0,0}
+// and warp_path[n] = {len(a) - 1, len(b)- 1}
+//
+// Note that this DOES NOT define an alignment from a point sequence to an
+// edge sequence. That functionality may come at a later date.
+type warpPath []warpPair
+type warpPair struct{ a, b int }
+
+type vertexAlignment struct {
+	// alignmentCost represents the sum of the squared chordal distances
+	// between each pair of vertices in the warp path. Specifically,
+	// cost = sum_{(i, j) \in path} (a.vertex(i) - b.vertex(j)).Norm();
+	// This means that the units of alignment_cost are distance. This is
+	// an optimization to avoid the (expensive) atan computation of the true
+	// spherical angular distance between the points. All we need to compute
+	// vertex alignment is a metric that satisfies the triangle inequality, and
+	// chordal distance works as well as spherical s1.Angle distance for
+	// this purpose.
+	alignmentCost float64
+	warpPath      warpPath
+}
+
+type costTable [][]float64
+
+func newCostTable(rows, cols int) costTable {
+	c := make([][]float64, rows)
+	for i := 0; i < rows; i++ {
+		c[i] = make([]float64, cols)
+	}
+	return c
+}
+
+func (c costTable) String() string {
+	var buf bytes.Buffer
+	for i, row := range c {
+		buf.WriteString(fmt.Sprintf("%2d: [", i))
+		for _, col := range row {
+			buf.WriteString(fmt.Sprintf("%0.3f, ", col))
+		}
+		buf.WriteString("]\n")
+	}
+	return buf.String()
+}
+
+func (c costTable) boundsCheckedTableCost(row, col int, stride columnStride) float64 {
+	if row < 0 && col < 0 {
+		return 0.0
+	} else if row < 0 || col < 0 || !stride.InRange(col) {
+		return math.MaxFloat64
+	} else {
+		return c[row][col]
+	}
+}
+
+func (c costTable) cost() float64 {
+	r := len(c) - 1
+	return c[r][len(c[r])-1]
+}
+
+// ExactVertexAlignmentCost takes two non-empty polylines as input, and
+// returns the *cost* of their optimal alignment. A standard, traditional
+// dynamic timewarp algorithm can output both a warp path and a cost, but
+// requires quadratic space to reconstruct the path by walking back through the
+// Dynamic Programming cost table. If all you really need is the warp cost (i.e.
+// you're inducing a similarity metric between Polylines, or something
+// equivalent), you can overwrite the DP table and use constant space -
+// O(max(A,B)). This method provides that space-efficiency optimization.
+func ExactVertexAlignmentCost(a, b *Polyline) float64 {
+	aN := len(*a)
+	bN := len(*b)
+	cost := make([]float64, bN)
+	for i := 0; i < bN; i++ {
+		cost[i] = math.MaxFloat64
+	}
+	leftDiagMinCost := 0.0
+	for row := 0; row < aN; row++ {
+		for col := 0; col < bN; col++ {
+			upCost := cost[col]
+			cost[col] = math.Min(leftDiagMinCost, upCost) +
+				(*a)[row].Sub((*b)[col].Vector).Norm()
+			leftDiagMinCost = math.Min(cost[col], upCost)
+		}
+		leftDiagMinCost = math.MaxFloat64
+	}
+	return cost[len(cost)-1]
+}
+
+// GetExactVertexAlignment takes two non-empty polylines as input, and returns
+// the VertexAlignment corresponding to the optimal alignment between them. This
+// method is quadratic O(A*B) in both space and time complexity.
+func ExactVertexAlignment(a, b *Polyline) *vertexAlignment {
+	aN := len(*a)
+	bN := len(*b)
+	strides := make([]columnStride, aN)
+	for i := 0; i < aN; i++ {
+		strides[i] = columnStride{start: 0, end: bN}
+	}
+	w := windowFromStrides(strides)
+
+	return dynamicTimewarp(a, b, w)
+}
+
+// Perform dynamic timewarping by filling in the DP table on cells that are
+// inside our search window. For an exact (all-squares) evaluation, this
+// incurs bounds checking overhead - we don't need to ensure that we're inside
+// the appropriate cells in the window, because it's guaranteed. Structuring
+// the program to reuse code for both the EXACT and WINDOWED cases by
+// abstracting EXACT as a window with full-covering strides is done for
+// maintainability reasons. One potential optimization here might be to overload
+// this function to skip bounds checking when the window is full.
+//
+// As a note of general interest, the Dynamic Timewarp algorithm as stated here
+// prefers shorter warp paths, when two warp paths might be equally costly. This
+// is because it favors progressing in the sequences simultaneously due to the
+// equal weighting of a diagonal step in the cost table with a horizontal or
+// vertical step. This may be counterintuitive, but represents the standard
+// implementation of this algorithm. TODO(user) - future implementations could
+// allow weights on the lookup costs to mitigate this.
+//
+// This is the hottest routine in the whole package, please be careful to
+// profile any future changes made here.
+//
+// This method takes time proportional to the number of cells in the window,
+// which can range from O(max(a, b)) cells (best) to O(a*b) cells (worst)
+func dynamicTimewarp(a, b *Polyline, w *window) *vertexAlignment {
+	rows := len(*a)
+	cols := len(*b)
+	costs := newCostTable(rows, cols)
+
+	var curr columnStride
+	prev := allColumnStride()
+
+	for row := 0; row < rows; row++ {
+		curr = w.columnStride(row)
+		for col := curr.start; col < curr.end; col++ {
+			// The total cost up to (row,col) is the minimum of the cost up, down,
+			// left and the distance between the points in row and col. We use
+			// the distance between the points, as we are trying to minimize the
+			// distance between the two polylines.
+			dCost := costs.boundsCheckedTableCost(row-1, col-1, prev)
+			uCost := costs.boundsCheckedTableCost(row-1, col-0, prev)
+			lCost := costs.boundsCheckedTableCost(row-0, col-1, curr)
+
+			costs[row][col] = minFloat64(dCost, uCost, lCost) +
+				(*a)[row].Sub((*b)[col].Vector).Norm()
+		}
+		prev = curr
+	}
+
+	// Now we walk back through the cost table and build up the warp path.
+	// Somewhat surprisingly, it is faster to recover the path this way than it
+	// is to save the comparisons from the computation we *already did* to get the
+	// direction we came from. The author speculates that this behavior is
+	// assignment-cost-related: to persist direction, we have to do extra
+	// stores/loads of "directional" information, and the extra assignment cost
+	// this incurs is larger than the cost to simply redo the comparisons.
+	// It's probably worth revisiting this assumption in the future.
+	// As it turns out, the following code ends up effectively free.
+	warpPath := make([]warpPair, 0, maxInt(rows, cols))
+	row := rows - 1
+	col := cols - 1
+	curr = w.checkedColumnStride(row)
+	prev = w.checkedColumnStride(row - 1)
+	for row >= 0 && col >= 0 {
+		warpPath = append(warpPath, warpPair{row, col})
+		dCost := costs.boundsCheckedTableCost(row-1, col-1, prev)
+		uCost := costs.boundsCheckedTableCost(row-1, col-0, prev)
+		lCost := costs.boundsCheckedTableCost(row-0, col-1, curr)
+
+		if dCost <= uCost && dCost <= lCost {
+			row -= 1
+			col -= 1
+			curr = w.checkedColumnStride(row)
+			prev = w.checkedColumnStride(row - 1)
+		} else if uCost <= lCost {
+			row -= 1
+			curr = w.checkedColumnStride(row)
+			prev = w.checkedColumnStride(row - 1)
+		} else {
+			col -= 1
+		}
+	}
+
+	// TODO(rsned): warpPath.reverse
+	return &vertexAlignment{alignmentCost: costs.cost(), warpPath: warpPath}
+}
+
 // TODO(rsned): Differences from C++
-// VertexAlignment
+// ApproxVertexAlignment/Cost
 // MedoidPolyline / Options
 // ConsensusPolyline / Options

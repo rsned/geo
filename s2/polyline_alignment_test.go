@@ -1,6 +1,22 @@
+// Copyright 2023 Google Inc. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS-IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
 package s2
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -307,3 +323,136 @@ func TestPolylineAlignmentHalfResolution(t *testing.T) {
 		}
 	}
 }
+
+func distanceMatrix(a, b *Polyline) costTable {
+	aN := len(*a)
+	bN := len(*b)
+	table := costTable(make([][]float64, aN))
+	for i := 0; i < aN; i++ {
+		table[i] = make([]float64, bN)
+		for j := 0; j < bN; j++ {
+			table[i][j] = (*a)[i].Sub((*b)[j].Vector).Norm()
+		}
+	}
+	return table
+}
+
+// Do some testing against random sequences with a brute-force solver.
+// Returns the optimal cost of alignment up until vertex i, j.
+func bruteForceCost(table costTable, i, j int) float64 {
+	fmt.Printf("i: %d   j: %d costTable:\n%s\n", i, j, table)
+	if i == 0 && j == 0 {
+		fmt.Printf("case 0\n")
+		return table[0][0]
+	} else if i == 0 {
+		fmt.Printf("case 1\n")
+		return bruteForceCost(table, i, j-1) + table[i][j]
+	} else if j == 0 {
+		fmt.Printf("case 2\n")
+		return bruteForceCost(table, i-1, j) + table[i][j]
+	} else {
+		fmt.Printf("case 3\n")
+		return minFloat64(bruteForceCost(table, i-1, j-1),
+			bruteForceCost(table, i-1, j),
+			bruteForceCost(table, i, j-1)) +
+			table[i][j]
+	}
+}
+
+func TestPolylineAlignmentExactAlignmentCost(t *testing.T) {
+	tests := []struct {
+		label    string
+		a, b     string
+		wantPath warpPath
+	}{
+		// Test cases that should cause panic and crash
+		/*
+			{
+				label:    "ExactLengthZeroInputs",
+				a:        "",
+				b:        "",
+				wantPath: warpPath{},
+			},
+			{
+				label:    "ExactLengthZeroInputA",
+				a:        "",
+				b:        "0:0, 1:1, 2:2",
+				wantPath: warpPath{},
+			},
+			{
+				label:    "ExactLengthZeroInputB",
+				a:        "0:0, 1:1, 2:2",
+				b:        "",
+				wantPath: warpPath{},
+			},
+		*/
+		{
+			label:    "ExactLengthOneInputs",
+			a:        "1:1",
+			b:        "2:2",
+			wantPath: warpPath{{0, 0}},
+		},
+		{
+			label:    "ExactLengthOneInputA",
+			a:        "0:0",
+			b:        "0:0, 1:1, 2:2",
+			wantPath: warpPath{{0, 0}, {0, 1}, {0, 2}},
+		},
+		{
+			label:    "ExactLengthOneInputB",
+			a:        "0:0, 1:1, 2:2",
+			b:        "0:0",
+			wantPath: warpPath{{0, 0}, {1, 0}, {2, 0}},
+		},
+		{
+			label:    "ExactHeaderFileExample",
+			a:        "1:0, 5:0, 6:0, 9:0",
+			b:        "2:0, 7:0, 8:0",
+			wantPath: warpPath{{0, 0}, {1, 1}, {2, 1}, {3, 2}},
+		},
+		{
+			// Tests that we get the correct path in the case where we have polylines at
+			// right angles, that would get a different matching of points for distance
+			// cost versus squared distance cost. If we had used squared distance for the
+			// cost the path would be {{0, 0}, {1, 0}, {2, 0}, {3, 1}, {3, 2}}; See
+			// https://screenshot.googleplex.com/7eeMjdSc5HeSeTD for the costs between the
+			// different pairs for distance and squared distance
+			//
+			// A0---A1---A2
+			// B0       |
+			// |        A3
+			// B1-------B2
+			label:    "DifferentPathForDistanceVersusSquaredDistance",
+			a:        "0.1:-0.1, 0.1:0, 0.1:0.1, -0.1:0.1",
+			b:        "0.1:-0.1, -0.1:-0.1, -0.1:0.1",
+			wantPath: warpPath{{0, 0}, {1, 0}, {2, 1}, {3, 2}},
+		},
+	}
+
+	for _, test := range tests {
+		// Use Brute Force solver to verify exact Dynamic Programming solvers.
+		a := makePolyline(test.a)
+		b := makePolyline(test.b)
+		aN := len(*a)
+		bN := len(*b)
+
+		bruteCost := bruteForceCost(distanceMatrix(a, b), aN-1, bN-1)
+		exactCost := ExactVertexAlignmentCost(a, b)
+		if !float64Eq(bruteCost, exactCost) {
+			t.Errorf("%s: ExactVertexAlignmentCost(%v, %v) = %f, want %f",
+				test.label, a, b, exactCost, bruteCost)
+		}
+
+		exactAlignment := ExactVertexAlignment(a, b)
+		if !float64Eq(bruteCost, exactAlignment.alignmentCost) {
+			t.Errorf("%s: ExactVertexAlignment(%v, %v) = %f, want %f",
+				test.label, a, b, exactAlignment.alignmentCost, bruteCost)
+		}
+	}
+
+	// TODO(rsned): Add FuzzWithBrutForce to this.
+}
+
+// TODO()rsned): Differences from C++
+// Medoid tests
+// Consensus testss
