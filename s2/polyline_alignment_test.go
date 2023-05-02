@@ -16,7 +16,6 @@
 package s2
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -37,17 +36,17 @@ func TestPolylineAlignmentWindowCreateFromStrides(t *testing.T) {
 		{4, 6},
 	}
 	w := windowFromStrides(strides)
-	if w.columnStride(0).start != 0 {
-		t.Errorf("foo")
+	if got := w.columnStride(0).start; got != 0 {
+		t.Errorf("%+v.columnStride(0).start = %d, want %d", w, got, 0)
 	}
-	if w.columnStride(0).end != 3 {
-		t.Errorf("foo")
+	if got := w.columnStride(0).end; got != 3 {
+		t.Errorf("%+v.columnStride(0).end = %d, want %d", w, got, 3)
 	}
-	if w.columnStride(4).start != 4 {
-		t.Errorf("foo")
+	if got := w.columnStride(4).start; got != 4 {
+		t.Errorf("%+v.columnStride(4).start = %d, want %d", w, got, 4)
 	}
-	if w.columnStride(4).end != 6 {
-		t.Errorf("foo")
+	if got := w.columnStride(4).end; got != 6 {
+		t.Errorf("%+v.columnStride(4).end = %d, want %d", w, got, 6)
 	}
 }
 
@@ -67,7 +66,6 @@ func TestPolylineAlignmentTestWindowDebugString(t *testing.T) {
 	got := w.debugString()
 	if diff := cmp.Diff(got, want); diff != "" {
 		t.Errorf("w.debugString() = %q, want %q\ndiff: %s", got, want, diff)
-
 	}
 }
 
@@ -340,18 +338,13 @@ func distanceMatrix(a, b *Polyline) costTable {
 // Do some testing against random sequences with a brute-force solver.
 // Returns the optimal cost of alignment up until vertex i, j.
 func bruteForceCost(table costTable, i, j int) float64 {
-	fmt.Printf("i: %d   j: %d costTable:\n%s\n", i, j, table)
 	if i == 0 && j == 0 {
-		fmt.Printf("case 0\n")
 		return table[0][0]
 	} else if i == 0 {
-		fmt.Printf("case 1\n")
 		return bruteForceCost(table, i, j-1) + table[i][j]
 	} else if j == 0 {
-		fmt.Printf("case 2\n")
 		return bruteForceCost(table, i-1, j) + table[i][j]
 	} else {
-		fmt.Printf("case 3\n")
 		return minFloat64(bruteForceCost(table, i-1, j-1),
 			bruteForceCost(table, i-1, j),
 			bruteForceCost(table, i, j-1)) +
@@ -450,7 +443,7 @@ func TestPolylineAlignmentExactAlignmentCost(t *testing.T) {
 		}
 	}
 
-	// TODO(rsned): Add FuzzWithBrutForce to this.
+	// TODO(rsned): Add FuzzWithBruteForce to this.
 }
 
 // TODO()rsned): Differences from C++
