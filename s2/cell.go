@@ -112,24 +112,47 @@ func (c Cell) SizeST() float64 {
 	return c.id.sizeST(int(c.level))
 }
 
-// Vertex returns the k-th vertex of the cell (k = 0,1,2,3) in CCW order
+// Vertex returns the normalized k-th vertex of the cell (k = 0,1,2,3) in CCW order
 // (lower left, lower right, upper right, upper left in the UV plane).
 func (c Cell) Vertex(k int) Point {
-	return Point{faceUVToXYZ(int(c.face), c.uv.Vertices()[k].X, c.uv.Vertices()[k].Y).Normalize()}
+	return Point{c.VertexRaw(k).Normalize()}
 }
 
-// Edge returns the inward-facing normal of the great circle passing through
-// the CCW ordered edge from vertex k to vertex k+1 (mod 4) (for k = 0,1,2,3).
+// VertexRaw returns the unnormalized k-th vertex of the cell (k = 0,1,2,3) in CCW order
+// (lower left, lower right, upper right, upper left in the UV plane).
+func (c Cell) VertexRaw(k int) Point {
+	return Point{faceUVToXYZ(int(c.face), c.uv.Vertices()[k].X, c.uv.Vertices()[k].Y)}
+}
+
+// Edge returns the nomalized inward-facing normal of the great circle passing through
+// the CCW ordered edge from vertex k to vertex k+1 (mod 4) (for k = 0,1,2,3)
 func (c Cell) Edge(k int) Point {
+	return Point{c.EdgeRaw(k).Normalize()}
+}
+
+// EdgeRaw returns the inward-facing normal of the great circle passing through
+// the CCW ordered edge from vertex k to vertex k+1 (mod 4) (for k = 0,1,2,3).
+//
+// The normals returned by EdgeRaw are not necessarily unit length, but their
+// length is bounded by Sqrt(2) since the worst case is two components of magnitude 1.
+//
+// The vertices returned by Vertex are not guaranteed to actually be on the
+// boundary of the cell exactly. Instead, they're the nearest representable
+// point to the corner.
+//
+// Cell edge normals returned by EdgeRaw, however, are computed exactly and
+// can be used with exact predicates to determine spatial relationships to the
+// cell exactly.
+func (c Cell) EdgeRaw(k int) Point {
 	switch k {
 	case 0:
-		return Point{vNorm(int(c.face), c.uv.Y.Lo).Normalize()} // Bottom
+		return Point{vNorm(int(c.face), c.uv.Y.Lo)} // Bottom
 	case 1:
-		return Point{uNorm(int(c.face), c.uv.X.Hi).Normalize()} // Right
+		return Point{uNorm(int(c.face), c.uv.X.Hi)} // Right
 	case 2:
-		return Point{vNorm(int(c.face), c.uv.Y.Hi).Mul(-1.0).Normalize()} // Top
+		return Point{vNorm(int(c.face), c.uv.Y.Hi).Mul(-1.0)} // Top
 	default:
-		return Point{uNorm(int(c.face), c.uv.X.Lo).Mul(-1.0).Normalize()} // Left
+		return Point{uNorm(int(c.face), c.uv.X.Lo).Mul(-1.0)} // Left
 	}
 }
 

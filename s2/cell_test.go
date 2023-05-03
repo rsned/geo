@@ -61,15 +61,15 @@ func TestCellFaces(t *testing.T) {
 			t.Errorf("cell should not be a leaf: IsLeaf = %v", cell.IsLeaf())
 		}
 		for k := 0; k < 4; k++ {
-			edgeCounts[cell.Edge(k)]++
-			vertexCounts[cell.Vertex(k)]++
-			if d := cell.Vertex(k).Dot(cell.Edge(k).Vector); !float64Eq(0.0, d) {
+			edgeCounts[cell.EdgeRaw(k)]++
+			vertexCounts[cell.VertexRaw(k)]++
+			if d := cell.VertexRaw(k).Dot(cell.EdgeRaw(k).Vector); !float64Eq(0.0, d) {
 				t.Errorf("dot product of vertex and edge failed, got %v, want 0", d)
 			}
-			if d := cell.Vertex((k + 1) & 3).Dot(cell.Edge(k).Vector); !float64Eq(0.0, d) {
+			if d := cell.VertexRaw((k + 1) & 3).Dot(cell.EdgeRaw(k).Vector); !float64Eq(0.0, d) {
 				t.Errorf("dot product for edge and next vertex failed, got %v, want 0", d)
 			}
-			if d := cell.Vertex(k).Vector.Cross(cell.Vertex((k + 1) & 3).Vector).Normalize().Dot(cell.Edge(k).Vector); !float64Eq(1.0, d) {
+			if d := cell.VertexRaw(k).Vector.Cross(cell.VertexRaw((k + 1) & 3).Vector).Normalize().Dot(cell.Edge(k).Vector); !float64Eq(1.0, d) {
 				t.Errorf("dot product of cross product for vertices failed, got %v, want 1.0", d)
 			}
 		}
@@ -201,11 +201,11 @@ func testCellChildren(t *testing.T, cell Cell) {
 		}
 
 		for k := 0; k < 4; k++ {
-			if !direct.Vertex(k).ApproxEqual(ci.Vertex(k)) {
-				t.Errorf("child %d %v.Vertex(%d) = %v, want %v", i, ci, k, ci.Vertex(k), direct.Vertex(k))
+			if !direct.VertexRaw(k).ApproxEqual(ci.VertexRaw(k)) {
+				t.Errorf("child %d %v.VertexRaw(%d) = %v, want %v", i, ci, k, ci.VertexRaw(k), direct.VertexRaw(k))
 			}
-			if direct.Edge(k) != ci.Edge(k) {
-				t.Errorf("child %d %v.Edge(%d) = %v, want %v", i, ci, k, ci.Edge(k), direct.Edge(k))
+			if direct.EdgeRaw(k) != ci.EdgeRaw(k) {
+				t.Errorf("child %d %v.EdgeRaw(%d) = %v, want %v", i, ci, k, ci.EdgeRaw(k), direct.EdgeRaw(k))
 			}
 		}
 
@@ -223,8 +223,8 @@ func testCellChildren(t *testing.T, cell Cell) {
 			t.Errorf("%v.ContainsPoint(%v) = false, want true", cell, ci.Center())
 		}
 		for j := 0; j < 4; j++ {
-			if !cell.ContainsPoint(ci.Vertex(j)) {
-				t.Errorf("%v.ContainsPoint(%v.Vertex(%d)) = false, want true", cell, ci, j)
+			if !cell.ContainsPoint(ci.VertexRaw(j)) {
+				t.Errorf("%v.ContainsPoint(%v.VertexRaw(%d)) = false, want true", cell, ci, j)
 			}
 			if j != i {
 				if ci.ContainsPoint(children[j].Center()) {
@@ -265,11 +265,17 @@ func testCellChildren(t *testing.T, cell Cell) {
 			if !childRect.ContainsPoint(ci.Vertex(j)) {
 				t.Errorf("childRect %v.ContainsPoint(%v.Vertex(%d)) = false, want true", childRect, ci, j)
 			}
+			if !childRect.ContainsPoint(ci.VertexRaw(j)) {
+				t.Errorf("childRect %v.ContainsPoint(%v.VertexRaw(%d)) = false, want true", childRect, ci, j)
+			}
 			if !parentCap.ContainsPoint(ci.Vertex(j)) {
 				t.Errorf("parentCap %v.ContainsPoint(%v.Vertex(%d)) = false, want true", parentCap, ci, j)
 			}
 			if !parentRect.ContainsPoint(ci.Vertex(j)) {
 				t.Errorf("parentRect %v.ContainsPoint(%v.Vertex(%d)) = false, want true", parentRect, ci, j)
+			}
+			if !parentRect.ContainsPoint(ci.VertexRaw(j)) {
+				t.Errorf("parentRect %v.ContainsPoint(%v.VertexRaw(%d)) = false, want true", parentRect, ci, j)
 			}
 			if j != i {
 				// The bounding caps and rectangles should be tight enough so that
@@ -280,7 +286,7 @@ func testCellChildren(t *testing.T, cell Cell) {
 					if childCap.ContainsPoint(children[j].Vertex(k)) {
 						capCount++
 					}
-					if childRect.ContainsPoint(children[j].Vertex(k)) {
+					if childRect.ContainsPoint(children[j].VertexRaw(k)) {
 						rectCount++
 					}
 				}
