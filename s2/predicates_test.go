@@ -998,6 +998,158 @@ func TestPredicatesSignDotProd(t *testing.T) {
 	}
 }
 
+func TestPredicatesCircleEdgeIntersectionOrdering(t *testing.T) {
+	// Verifies that CircleEdgeIntersectionOrdering(a, b, c, d, n, m) == expected,
+	// and that the minimum required precision is "expected_prec".
+
+	// Two cells who's left and right edges are on the prime meridian,
+	// cell0 := CellFromCellID(CellIDFromToken("054"))
+	cell1 := CellFromCellID(CellIDFromToken("1ac"))
+
+	// And then the three neighbors above them.
+	// cella := CellFromCellID(CellIDFromToken("0fc"))
+	cellb := CellFromCellID(CellIDFromToken("104"))
+	// 	cellc := CellFromCellID(CellIDFromToken("10c"))
+
+	// Top, left and right edges of the cell as unnormalized vectors.
+	e3 := cell1.EdgeRaw(3)
+	e2 := cell1.EdgeRaw(2)
+	e1 := cell1.EdgeRaw(1) // EdgeRaw
+	c1 := cell1.Center()
+	cb := cellb.Center()
+	yeps := r3.Vector{X: 0, Y: epsilon, Z: 0}
+
+	tests := []struct {
+		a, b, c, d, m, n Point
+		want             int
+		prec             string
+	}{
+		{
+			// The same edge should cross at the same spot exactly.
+			a:    c1,
+			b:    cb,
+			c:    c1,
+			d:    cb,
+			m:    e2,
+			n:    e1,
+			want: 0,
+			prec: "DOUBLE",
+		},
+		{
+			// Simple case where the crossings aren't too close, AB should cross after CD.
+			a:    c1,
+			b:    cellb.Vertex(3),
+			c:    c1,
+			d:    cellb.Vertex(2),
+			m:    e2,
+			n:    e1,
+			want: 1,
+			prec: "DOUBLE",
+		},
+		// Swapping the boundary we're comparing against should negate the sign.
+		{
+			a:    c1,
+			b:    cellb.Vertex(3),
+			c:    c1,
+			d:    cellb.Vertex(2),
+			m:    e2,
+			n:    e3,
+			want: -1,
+			prec: "DOUBLE",
+		},
+
+		// As should swapping the edge ordering.
+		{
+			a:    c1,
+			b:    cellb.Vertex(2),
+			c:    c1,
+			d:    cellb.Vertex(3),
+			m:    e2,
+			n:    e1,
+			want: -1,
+			prec: "DOUBLE",
+		},
+		{
+			a:    c1,
+			b:    cellb.Vertex(2),
+			c:    c1,
+			d:    cellb.Vertex(3),
+			m:    e2,
+			n:    e3,
+			want: 1,
+			prec: "DOUBLE",
+		},
+
+		// Nearly the same edge but with one endpoint perturbed enough to require
+		// long double precision.
+		{
+			a:    c1,
+			b:    Point{cb.Add(yeps)},
+			c:    c1,
+			d:    cb,
+			m:    e2,
+			n:    e1,
+			want: -1,
+			prec: "EXACT",
+		},
+		{
+			a:    c1,
+			b:    Point{cb.Sub(yeps)},
+			c:    c1,
+			d:    cb,
+			m:    e2,
+			n:    e1,
+			want: 1,
+			prec: "EXACT",
+		},
+		{
+			a:    c1,
+			b:    cb,
+			c:    c1,
+			d:    Point{cb.Add(yeps)},
+			m:    e2,
+			n:    e1,
+			want: 1,
+			prec: "EXACT",
+		},
+		{
+			a:    c1,
+			b:    cb,
+			c:    c1,
+			d:    Point{cb.Sub(yeps)},
+			m:    e2,
+			n:    e1,
+			want: -1,
+			prec: "EXACT",
+		},
+	}
+
+	for i, test := range tests {
+		got := CircleEdgeIntersectionOrdering(test.a, test.b, test.c, test.d, test.m, test.n)
+
+		if got != test.want {
+			t.Errorf("%d: CircleEdgeIntersectionOrdering(%v, %v, %v, %v, %v, %v) = %d, want %d ",
+				i, test.a, test.b, test.c, test.d, test.m, test.n, got, test.want)
+		}
+
+		// We triage in double precision and then fall back to exact for 0.
+		actualPrec := "EXACT"
+		if triageIntersectionOrdering(test.a, test.b, test.c, test.d, test.m, test.n) != 0 {
+			actualPrec = "DOUBLE"
+		} else {
+			// We got zero, check for duplicate/reverse duplicate edges before falling
+			// back to more precision.
+			if (test.a == test.c && test.b == test.d) || (test.a == test.d && test.b == test.c) {
+				actualPrec = "DOUBLE"
+			}
+		}
+		if actualPrec != test.prec {
+			t.Errorf("%d: CircleEdgeIntersectionOrdering(%v, %v, %v, %v, %v, %v( used precision %q, wanted %q",
+				i, test.a, test.b, test.c, test.d, test.m, test.n, actualPrec, test.prec)
+		}
+	}
+}
+
 func BenchmarkSign(b *testing.B) {
 	p1 := Point{r3.Vector{-3, -1, 4}}
 	p2 := Point{r3.Vector{2, -1, -3}}
@@ -1026,3 +1178,25 @@ func BenchmarkRobustSignNearCollinear(b *testing.B) {
 		RobustSign(poA, poB, poC)
 	}
 }
+
+// TODO(rsned): Differences from C++
+//
+// TEST(epsilon_for_digits, recursion) {
+// TEST(rounding_epsilon, vs_numeric_limits) {
+// TEST(Sign, CollinearPoints) {
+// TEST(Sign, StableSignUnderflow) {
+// TEST_F(SignTest, StressTest) {
+// TEST_F(StableSignTest, FailureRate) {
+// TEST(Sign, SymbolicPerturbationCodeCoverage) {
+// TEST(CompareDistances, Coverage) {
+// TEST(CompareDistance, Coverage) {
+// TEST(CompareEdgeDistance, Coverage) {
+// TEST(CompareEdgeDistance, Consistency) {
+// TEST(CompareEdgePairDistance, Coverage) {
+// TEST(CompareEdgeDirections, Coverage) {
+// TEST(CircleEdgeIntersectionSign, Works) {
+// TEST(CompareEdgeDirections, Consistency) {
+// TEST(EdgeCircumcenterSign, Coverage) {
+// TEST(EdgeCircumcenterSign, Consistency) {
+// TEST(VoronoiSiteExclusion, Coverage) {
+// TEST(VoronoiSiteExclusion, Consistency) {

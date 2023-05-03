@@ -83,8 +83,18 @@ const (
 	CounterClockwise Direction = 1
 )
 
+// These big.Float methods are copied from r3/precisevector.go
+
 // newBigFloat constructs a new big.Float with maximum precision.
 func newBigFloat() *big.Float { return new(big.Float).SetPrec(big.MaxPrec) }
+
+func precSub(a, b *big.Float) *big.Float {
+	return new(big.Float).SetPrec(big.MaxPrec).Sub(a, b)
+}
+
+func precMul(a, b *big.Float) *big.Float {
+	return new(big.Float).SetPrec(big.MaxPrec).Mul(a, b)
+}
 
 // Sign returns true if the points A, B, C are strictly counterclockwise,
 // and returns false if the points are clockwise or collinear (i.e. if they are all
@@ -716,6 +726,168 @@ func triageSignDotProd(a, b Point) int {
 	return -1
 }
 
+// CircleEdgeIntersectionOrdering reports the relative position of two edges crossing
+// a great circle relative to a given point.
+//
+// Given two edges AB and CD that cross a great circle defined by a normal
+// vector M, orders the crossings of AB and CD relative to another great circle
+// N representing a zero point.
+//
+// This predicate can be used in any circumstance where we have an exact normal
+// vector to order edge crossings relative to some zero point.
+//
+// As an example, if we have edges AB and CD that cross boundary 2 of a cell:
+//
+//	   B     D
+//	   •  2  •
+//	  ┌─\───/─┐
+//	3 │  • •  │ 1
+//	     A C
+//
+// We could order them by using the normal of boundary 2 as M, and the normal of
+// either boundary 1 or 3 as N.  If we use boundary 1 as N, then:
+//
+//	CircleEdgeIntersectionOrdering(A, B, C, D, M, N) == +1
+//
+// Indicating that CD is closer to boundary 1 than AB is.
+//
+// But, if we use boundary 3 as N, then:
+//
+//	CircleEdgeIntersectionOrdering(A, B, C, D, M, N) == -1
+//
+// Indicating that AB is closer to boundary 3 than CD is.
+//
+// These results are consistent but one needs to bear in mind what boundary is
+// being used as the reference.
+//
+// The edges AB and CD should be specified such that A and C are on the positive
+// side of M and B and D are on the negative side, as illustrated above.  This
+// will make the sign of their cross products with M consistent.
+//
+// Because we use a dot product to check the distance from N, this predicate can
+// only unambiguously order along edges within [0,90] degrees of N (both
+// vertices must be in quadrant one of the unit circle).
+//
+// REQUIRES: A and B are not equal or antipodal.
+// REQUIRES: C and D are not equal or antipodal.
+// REQUIRES: M and N are not equal or antipodal.
+// REQUIRES: AB crosses M (vertices have opposite dot product signs with M)
+// REQUIRES: CD crosses M (vertices have opposite dot product signs with M)
+// REQUIRES: A and C are on the positive side of M
+// REQUIRES: B and D are on the negative side of M
+// REQUIRES: Intersection of AB and N is on the positive side of N
+// REQUIRES: Intersection of CD and N is on the positive side of N
+//
+// Returns:
+//
+//	-1 if crossing AB is closer to N than crossing CD
+//	 0 if the two edges cross at exactly the same position
+//	+1 if crossing AB is further from N than crossing CD
+func CircleEdgeIntersectionOrdering(a, b, c, d, m, n Point) int {
+	ans := triageIntersectionOrdering(a, b, c, d, m, n)
+	if ans != 0 {
+		return ans
+	}
+
+	// We got zero, check for duplicate/reverse duplicate edges before falling
+	// back to more precision.
+	if (a == c && b == d) || (a == d && b == c) {
+		return 0
+	}
+
+	return exactIntersectionOrdering(
+		r3.PreciseVectorFromVector(a.Vector), r3.PreciseVectorFromVector(b.Vector),
+		r3.PreciseVectorFromVector(c.Vector), r3.PreciseVectorFromVector(d.Vector),
+		r3.PreciseVectorFromVector(m.Vector), r3.PreciseVectorFromVector(n.Vector))
+}
+
+// triageIntersectionOrdering reports the order of intersections along a great circle
+// relative to some reference point using the float64 implementation.
+func triageIntersectionOrdering(a, b, c, d, m, n Point) int {
+	// Given an edge AB, and the normal of a great circle M, the intersection of
+	// the edge with the great circle is given by the triple product (A×B)×M.
+	//
+	// Its distance relative to the reference circle N is then proportional to the
+	// dot product with N: d0 = ((A×B)×M)•N
+	//
+	// Edge CD is similar, we want to compute d1 = ((C×D)×M)•N and compare d0 to
+	// d1.  If they're further than some error from each other, we can rely on the
+	// comparison, otherwise we fall back to more exact arithmetic.
+	//
+	// ((A×B)×M)•N is a quadruple product.  We can expand this out using
+	// Lagrange's formula for a vector triple product and then distribute the dot
+	// product, which eliminates all the cross products:
+	//
+	// d0 = ((A×B)×M)•N
+	// d0 = ((M•A)B - (M•B)A)•N
+	// d0 = (M•A)(N•B) - (M•B)(N•A)
+	//
+	// Similarly:
+	//
+	// d1 = (M•C)(N•D) - (M•D)(N•C)
+	//
+	// We can compute this difference with a maximum absolute error of 32ε (see
+	// the gappa proof at end of the file).
+	//
+	// NOTE: If we want to push this error bound down as far as possible, we could
+	// use the dot product algorithm created by Ogita et al:
+	//
+	//   Accurate Sum and Dot Product, Ogita, Rump, Oishi 2005.
+	//
+	// Along with the 2x2 determinant algorithm by Kahan (which is useful for any
+	// bilinear form):
+	//
+	//   Further Analysis of Kahan's Algorithm for the Accurate Computation of
+	//   2x2 Determinants, Jeannerod, Louvet, and Muller, 2013.
+	//
+	// Both algorithms allow us to have bounded relative error, and since we're
+	// only interested in the sign of this operation, as long as the relative
+	// error is < 1 we can never get a sign flip, which would make this exact for
+	// our purposes.
+	const maxError = 32 * epsilon
+
+	mdota := m.Dot(a.Vector)
+	mdotb := m.Dot(b.Vector)
+	mdotc := m.Dot(c.Vector)
+	mdotd := m.Dot(d.Vector)
+
+	ndota := n.Dot(a.Vector)
+	ndotb := n.Dot(b.Vector)
+	ndotc := n.Dot(c.Vector)
+	ndotd := n.Dot(d.Vector)
+
+	prodab := mdota*ndotb - mdotb*ndota
+	prodcd := mdotc*ndotd - mdotd*ndotc
+
+	if math.Abs(prodab-prodcd) > maxError {
+		if prodab < prodcd {
+			return -1
+		} else {
+			return +1
+		}
+	}
+	return 0
+}
+
+// exactIntersectionOrdering reports the order of intersections along a great circle
+// relative to some reference point using the precise implementation.
+func exactIntersectionOrdering(a, b, c, d, m, n r3.PreciseVector) int {
+	mdota := m.Dot(a)
+	mdotb := m.Dot(b)
+	mdotc := m.Dot(c)
+	mdotd := m.Dot(d)
+
+	ndota := n.Dot(a)
+	ndotb := n.Dot(b)
+	ndotc := n.Dot(c)
+	ndotd := n.Dot(d)
+
+	prodab := precSub(precMul(mdota, ndotb), precMul(mdotb, ndota))
+	prodcd := precSub(precMul(mdotc, ndotd), precMul(mdotd, ndotc))
+
+	return prodab.Cmp(prodcd)
+}
+
 // Gappa proof for TriageIntersectionOrdering
 //
 // # Use IEEE754 double precision, round-to-nearest by default.
@@ -893,20 +1065,21 @@ func triageSignDotProd(a, b Point) int {
 // CompareEdgeDirections
 // EdgeCircumcenterSign
 // GetVoronoiSiteExclusion
-// GetClosestVertex
-// TriageCompareLineSin2Distance
-// TriageCompareLineCos2Distance
-// TriageCompareLineDistance
-// TriageCompareEdgeDistance
-// ExactCompareLineDistance
-// ExactCompareEdgeDistance
-// TriageCompareEdgeDirections
-// ExactCompareEdgeDirections
-// ArePointsAntipodal
-// ArePointsLinearlyDependent
-// GetCircumcenter
-// TriageEdgeCircumcenterSign
-// ExactEdgeCircumcenterSign
-// UnperturbedSign
-// SymbolicEdgeCircumcenterSign
-// ExactVoronoiSiteExclusion
+//
+// getClosestVertex
+// triageCompareLineSin2Distance
+// triageCompareLineCos2Distance
+// triageCompareLineDistance
+// triageCompareEdgeDistance
+// exactCompareLineDistance
+// exactCompareEdgeDistance
+// triageCompareEdgeDirections
+// exactCompareEdgeDirections
+// arePointsAntipodal
+// arePointsLinearlyDependent
+// getCircumcenter
+// triageEdgeCircumcenterSign
+// exactEdgeCircumcenterSign
+// unperturbedSign
+// symbolicEdgeCircumcenterSign
+// exactVoronoiSiteExclusion
