@@ -316,7 +316,7 @@ func TestPolylineAlignmentHalfResolution(t *testing.T) {
 
 	for _, test := range tests {
 		got := halfResolution(makePolyline(test.have))
-		if gotS := pointsToString(*got); gotS != test.want {
+		if gotS := pointsToString(*got, false); gotS != test.want {
 			t.Errorf("halfResolution(%s) = %s, want %s", test.have, gotS, test.want)
 		}
 	}

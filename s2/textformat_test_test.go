@@ -75,30 +75,47 @@ func TestParseLatLng(t *testing.T) {
 
 func TestTextFormatWritePoints(t *testing.T) {
 	tests := []struct {
-		have []Point
-		want string
+		have      []Point
+		roundtrip bool
+		want      string
 	}{
 		{
-			have: nil,
-			want: "",
+			have:      nil,
+			roundtrip: false,
+			want:      "",
 		},
 		{
-			have: []Point{},
-			want: "",
+			have:      []Point{},
+			roundtrip: false,
+			want:      "",
 		},
 		{
-			have: []Point{PointFromCoords(1, 0, 0)},
-			want: "0:0",
+			have:      []Point{PointFromCoords(1, 0, 0)},
+			roundtrip: false,
+			want:      "0:0",
 		},
 		{
-			have: []Point{PointFromCoords(1, 0, 0), PointFromCoords(0, -1, 0)},
-			want: "0:0, 0:-90",
+			have:      []Point{PointFromCoords(1, 0, 0), PointFromCoords(0, -1, 0)},
+			roundtrip: false,
+			want:      "0:0, 0:-90",
+		},
+		{
+			// test without roundtrip precision.
+			have:      []Point{PointFromCoords(1, 6.02e-23, 0)},
+			roundtrip: false,
+			want:      "0:3.44920592668756e-21",
+		},
+		{
+			// test with roundtrip precision to get 2 extra digits.
+			have:      []Point{PointFromCoords(1, 6.02e-23, 0)},
+			roundtrip: true,
+			want:      "0:3.4492059266875556e-21",
 		},
 	}
 
 	for _, test := range tests {
 		var buf bytes.Buffer
-		writePoints(&buf, test.have)
+		writePoints(&buf, test.have, test.roundtrip)
 		if got := buf.String(); got != test.want {
 			t.Errorf("writePoints(%v) = %q, want %q", test.have, got, test.want)
 		}
@@ -130,8 +147,8 @@ func TestTextFormatParsePointRoundtrip(t *testing.T) {
 		if !pt.ApproxEqual(test.want) {
 			t.Errorf("parsePoint(%s) = %v, want %v", test.have, pt, test.want)
 		}
-		if got := pointToString(pt); got != test.have {
-			t.Errorf("pointToString(parsePoint(%v)) = %v, want %v", test.have, got, test.have)
+		if got := pointToString(pt, false); got != test.have {
+			t.Errorf("pointToString(parsePoint(%v), false) = %v, want %v", test.have, got, test.have)
 		}
 	}
 }
@@ -201,8 +218,8 @@ func TestTextFormatParsePointRoundtripEdgecases(t *testing.T) {
 		if !pt.ApproxEqual(test.wantPt) {
 			t.Errorf("parsePoint(%s) = %v, want %v", test.have, pt, test.wantPt)
 		}
-		if got := pointToString(pt); got != test.wantStr {
-			t.Errorf("pointToString(parsePoint(%v)) = %v, want %v", test.have, got, test.wantStr)
+		if got := pointToString(pt, false); got != test.wantStr {
+			t.Errorf("pointToString(parsePoint(%v), false) = %v, want %v", test.have, got, test.wantStr)
 		}
 	}
 }
@@ -471,10 +488,11 @@ func TestTextFormatShapeIndexDebugStringRoundTrip(t *testing.T) {
 		"# # 0:0, 0:1",
 		"# # 0:0, 0:1, 1:0",
 		"# # 0:0, 0:1, 1:0, 2:2",
+		"# # full",
 	}
 
 	for _, want := range tests {
-		if got := shapeIndexDebugString(makeShapeIndex(want)); got != want {
+		if got := shapeIndexDebugString(makeShapeIndex(want), false); got != want {
 			t.Errorf("ShapeIndex failed roundtrip to string. got %q, want %q", got, want)
 		}
 	}
