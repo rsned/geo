@@ -35,14 +35,12 @@ const (
 	// If any other machine architectures need to be supported, these next three
 	// values will need to be updated.
 
-	// epsilon is a small number that represents a reasonable level of noise between two
-	// values that can be considered to be equal.
-	epsilon = 1e-15
 	// dblEpsilon is a smaller number for values that require more precision.
 	// This is the C++ DBL_EPSILON equivalent.
 	dblEpsilon = 2.220446049250313e-16
 	// dblError is the C++ value for S2 rounding_epsilon().
 	dblError = 1.110223024625156e-16
+	//	dblError = 1.084202172485504e-19
 
 	// maxDeterminantError is the maximum error in computing (AxB).C where all vectors
 	// are unit length. Using standard inequalities, it can be shown that
