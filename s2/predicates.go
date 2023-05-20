@@ -739,7 +739,7 @@ func triageSignDotProd(a, b Point) int {
 	// Reference:
 	//   Error Estimation Of Floating-Point Summation And Dot Product, Rump
 	//   2011
-	const maxError = 3.046875 * epsilon
+	const maxError = 3.046875 * dblEpsilon
 
 	na := a.Dot(b.Vector)
 	if math.Abs(na) <= maxError {
@@ -870,7 +870,7 @@ func triageIntersectionOrdering(a, b, c, d, m, n Point) int {
 	// only interested in the sign of this operation, as long as the relative
 	// error is < 1 we can never get a sign flip, which would make this exact for
 	// our purposes.
-	const maxError = 32 * epsilon
+	const maxError = 32 * dblEpsilon
 
 	mdota := m.Dot(a.Vector)
 	mdotb := m.Dot(b.Vector)
