@@ -24,6 +24,60 @@ import (
 	"github.com/golang/geo/s1"
 )
 
+func TestPredicatesEpsilonForDigits(t *testing.T) {
+	tests := []struct {
+		have int
+		want float64
+	}{
+		{
+			have: 0,
+			want: 1.0,
+		},
+		{
+			have: 24,
+			want: math.Ldexp(1.0, -24),
+		},
+		{
+			have: 53,
+			want: math.Ldexp(1.0, -53),
+		},
+		{
+			have: 64,
+			want: math.Ldexp(1.0, -64),
+		},
+		{
+			have: 106,
+			want: math.Ldexp(1.0, -106),
+		},
+		{
+			have: 113,
+			want: math.Ldexp(1.0, -113),
+		},
+	}
+
+	for _, test := range tests {
+		got := epsilonForDigits(test.have)
+		if !float64Eq(got, test.want) {
+			t.Errorf("epsilonForDigits(%d) = %g, want %g", test.have, got, test.want)
+		}
+	}
+}
+
+func TestRoundingEpsilon(t *testing.T) {
+	var f32 float32
+	var f64 float64
+
+	const f32Epsilon = 1.1920928955078125e-7
+
+	if got, want := roundingEpsilon(f32), f32Epsilon*0.5; got != want {
+		t.Errorf("roundingEpsilon(float32) = %g, want %g", got, want)
+	}
+
+	if got, want := roundingEpsilon(f64), dblEpsilon*0.5; got != want {
+		t.Errorf("roundingEpsilon(float64) = %g, want %g", got, want)
+	}
+}
+
 func TestPredicatesSign(t *testing.T) {
 	tests := []struct {
 		p1x, p1y, p1z, p2x, p2y, p2z, p3x, p3y, p3z float64

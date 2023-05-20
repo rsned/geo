@@ -39,8 +39,8 @@ const (
 	// This is the C++ DBL_EPSILON equivalent.
 	dblEpsilon = 2.220446049250313e-16
 	// dblError is the C++ value for S2 rounding_epsilon().
+	// If computed correctly, it should be 1.084202172485504e-19
 	dblError = 1.110223024625156e-16
-	//	dblError = 1.084202172485504e-19
 
 	// maxDeterminantError is the maximum error in computing (AxB).C where all vectors
 	// are unit length. Using standard inequalities, it can be shown that
@@ -70,6 +70,34 @@ const (
 	// its sign with certainty.
 	detErrorMultiplier = 3.2321 * dblEpsilon
 )
+
+// epsilonForDigits reports the epsilon for the given number of digits of mantissa.
+// This is essentially 2 ** (-digits).
+func epsilonForDigits(digits int) float64 {
+	// IEEE floats have either 24 (32-bit floating point) or 53
+	// (64 bit floating point) digits or mantissa.
+	if digits < 64 {
+		return 1.0 / float64(uint64(1)<<digits)
+	}
+	return epsilonForDigits(digits-63) / float64(1<<63)
+}
+
+// roundingEpsilon reports the maximum rounding error for arithmetic operations for
+// given type t.
+//
+// We could simply return 0.5 * epsilon, but that is not always the correct approach
+// on all platforms.
+func roundingEpsilon(t any) float64 {
+	switch t.(type) {
+	case float32:
+		return epsilonForDigits(24)
+	case float64:
+		return epsilonForDigits(53)
+	default:
+		// TODO(rsned): If go adds any other size floating point types, revisit this.
+		panic("unsupported type for rounding epsilon")
+	}
+}
 
 // Direction is an indication of the ordering of a set of points.
 type Direction int
