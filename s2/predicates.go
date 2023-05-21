@@ -42,6 +42,11 @@ const (
 	// If computed correctly, it should be 1.084202172485504e-19
 	dblError = 1.110223024625156e-16
 
+	// sqrt3 is used many times throughout but computed every time,
+	// so use the OEIS value like package math does for Sqrt2, etc.
+	// https://oeis.org/A002194
+	sqrt3 = 1.73205080756887729352744634150587236694280525381038062805580
+
 	// maxDeterminantError is the maximum error in computing (AxB).C where all vectors
 	// are unit length. Using standard inequalities, it can be shown that
 	//
@@ -520,8 +525,8 @@ func sin2Distance(x, y Point) (sin2, err float64) {
 	// distances as small as dblError.
 	n := x.Sub(y.Vector).Cross(x.Add(y.Vector))
 	sin2 = 0.25 * n.Norm2()
-	err = ((21+4*math.Sqrt(3))*dblError*sin2 +
-		32*math.Sqrt(3)*dblError*dblError*math.Sqrt(sin2) +
+	err = ((21+4*sqrt3)*dblError*sin2 +
+		32*sqrt3*dblError*dblError*math.Sqrt(sin2) +
 		768*dblError*dblError*dblError*dblError)
 	return sin2, err
 }

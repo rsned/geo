@@ -364,13 +364,13 @@ func TestEdgeDistancesInterpolate(t *testing.T) {
 			Point{r3.Vector{X: 1, Y: 0, Z: 0}},
 			Point{r3.Vector{X: 0, Y: 1, Z: 0}},
 			1.0 / 3.0,
-			Point{r3.Vector{X: math.Sqrt(3), Y: 1, Z: 0}},
+			Point{r3.Vector{X: sqrt3, Y: 1, Z: 0}},
 		},
 		{
 			Point{r3.Vector{X: 1, Y: 0, Z: 0}},
 			Point{r3.Vector{X: 0, Y: 1, Z: 0}},
 			2.0 / 3.0,
-			Point{r3.Vector{X: 1, Y: math.Sqrt(3), Z: 0}},
+			Point{r3.Vector{X: 1, Y: sqrt3, Z: 0}},
 		},
 
 		// InterpolateCanExtrapolate checks
@@ -773,7 +773,7 @@ func TestEdgeDistancesEdgePairMaxDistance(t *testing.T) {
 			a1:       PointFromCoords(0, 1, 0),
 			b0:       PointFromCoords(1, 1, 0),
 			b1:       PointFromCoords(1, 1, 1),
-			distRads: math.Acos(1 / math.Sqrt(3)),
+			distRads: math.Acos(1 / sqrt3),
 		},
 		{
 

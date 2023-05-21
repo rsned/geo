@@ -204,9 +204,9 @@ func minUpdateInteriorDistanceMaxError(dist s1.ChordAngle) float64 {
 	// perpendicular and parallel to a plane containing the edge respectively.
 	b := math.Min(1.0, 0.5*float64(dist))
 	a := math.Sqrt(b * (2 - b))
-	return ((2.5+2*math.Sqrt(3)+8.5*a)*a +
-		(2+2*math.Sqrt(3)/3+6.5*(1-b))*b +
-		(23+16/math.Sqrt(3))*dblEpsilon) * dblEpsilon
+	return ((2.5+2*sqrt3+8.5*a)*a +
+		(2+2*sqrt3/3+6.5*(1-b))*b +
+		(23+16/sqrt3)*dblEpsilon) * dblEpsilon
 }
 
 // updateMinDistance computes the distance from a point X to a line segment AB,

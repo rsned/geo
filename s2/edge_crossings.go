@@ -261,7 +261,7 @@ func projection(x, aNorm r3.Vector, aNormLen float64, a0, a1 Point) (proj, bound
 	// |(A.B)'-(A.B)| <= (1.5 * (A.B) + 1.5 * ||A|| * ||B||) * tErr
 	// ||(X-Y)'-(X-Y)|| <= ||X-Y|| * tErr
 	tErr := roundingEpsilon(x.X)
-	bound = (((3.5+2*math.Sqrt(3))*aNormLen+32*math.Sqrt(3)*dblError)*dist + 1.5*math.Abs(proj)) * tErr
+	bound = (((3.5+2*sqrt3)*aNormLen+32*sqrt3*dblError)*dist + 1.5*math.Abs(proj)) * tErr
 	return proj, bound
 }
 

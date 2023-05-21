@@ -14,10 +14,6 @@
 
 package s2
 
-import (
-	"math"
-)
-
 // EdgeCrosser allows edges to be efficiently tested for intersection with a
 // given fixed edge AB. It is especially efficient when testing for
 // intersection with an edge chain connecting vertices v0, v1, v2, ...
@@ -183,7 +179,7 @@ func (e *EdgeCrosser) crossingSign(d Point, bda Direction) Crossing {
 	// DotProd below is dblEpsilon. (There is also a small relative error
 	// term that is insignificant because we are comparing the result against a
 	// constant that is very close to zero.)
-	maxError := (1.5 + 1/math.Sqrt(3)) * dblEpsilon
+	maxError := (1.5 + 1/sqrt3) * dblEpsilon
 	if (e.c.Dot(e.aTangent.Vector) > maxError && d.Dot(e.aTangent.Vector) > maxError) || (e.c.Dot(e.bTangent.Vector) > maxError && d.Dot(e.bTangent.Vector) > maxError) {
 		return DoNotCross
 	}

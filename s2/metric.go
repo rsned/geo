@@ -99,7 +99,7 @@ var (
 	// MaxDiagAspect is the maximum diagonal aspect ratio over all cells at any
 	// level, where the diagonal aspect ratio of a cell is defined as the ratio
 	// of its longest diagonal length to its shortest diagonal length.
-	MaxDiagAspect = math.Sqrt(3)
+	MaxDiagAspect = sqrt3
 )
 
 // Value returns the value of the metric at the given level.

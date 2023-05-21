@@ -481,7 +481,7 @@ func (f *fractal) minRadiusFactor() float64 {
 func (f *fractal) maxRadiusFactor() float64 {
 	// The maximum radius is always attained at either an original triangle
 	// vertex or at a middle vertex from the first subdivision step.
-	return math.Max(1.0, f.offsetFraction*math.Sqrt(3)+0.5)
+	return math.Max(1.0, f.offsetFraction*sqrt3+0.5)
 }
 
 // r2VerticesHelper recursively subdivides the edge to the desired level given
@@ -518,8 +518,8 @@ func (f *fractal) generateR2Vertices() []r2.Point {
 	// The Koch "snowflake" consists of three Koch curves whose initial edges
 	// form an equilateral triangle.
 	v0 := r2.Point{1.0, 0.0}
-	v1 := r2.Point{-0.5, math.Sqrt(3) / 2}
-	v2 := r2.Point{-0.5, -math.Sqrt(3) / 2}
+	v1 := r2.Point{-0.5, sqrt3 / 2}
+	v2 := r2.Point{-0.5, -sqrt3 / 2}
 	vertices = append(vertices, f.r2VerticesHelper(v0, v1, 0)...)
 	vertices = append(vertices, f.r2VerticesHelper(v1, v2, 0)...)
 	vertices = append(vertices, f.r2VerticesHelper(v2, v0, 0)...)
