@@ -35,13 +35,11 @@ const (
 	// If any other machine architectures need to be supported, these next three
 	// values will need to be updated.
 
-	// epsilon is a small number that represents a reasonable level of noise between two
-	// values that can be considered to be equal.
-	epsilon = 1e-15
 	// dblEpsilon is a smaller number for values that require more precision.
 	// This is the C++ DBL_EPSILON equivalent.
 	dblEpsilon = 2.220446049250313e-16
 	// dblError is the C++ value for S2 rounding_epsilon().
+	// If computed correctly, it should be 1.084202172485504e-19
 	dblError = 1.110223024625156e-16
 
 	// maxDeterminantError is the maximum error in computing (AxB).C where all vectors
@@ -72,6 +70,34 @@ const (
 	// its sign with certainty.
 	detErrorMultiplier = 3.2321 * dblEpsilon
 )
+
+// epsilonForDigits reports the epsilon for the given number of digits of mantissa.
+// This is essentially 2 ** (-digits).
+func epsilonForDigits(digits int) float64 {
+	// IEEE floats have either 24 (32-bit floating point) or 53
+	// (64 bit floating point) digits or mantissa.
+	if digits < 64 {
+		return 1.0 / float64(uint64(1)<<digits)
+	}
+	return epsilonForDigits(digits-63) / float64(1<<63)
+}
+
+// roundingEpsilon reports the maximum rounding error for arithmetic operations for
+// given type t.
+//
+// We could simply return 0.5 * epsilon, but that is not always the correct approach
+// on all platforms.
+func roundingEpsilon(t any) float64 {
+	switch t.(type) {
+	case float32:
+		return epsilonForDigits(24)
+	case float64:
+		return epsilonForDigits(53)
+	default:
+		// TODO(rsned): If go adds any other size floating point types, revisit this.
+		panic("unsupported type for rounding epsilon")
+	}
+}
 
 // Direction is an indication of the ordering of a set of points.
 type Direction int
@@ -713,7 +739,7 @@ func triageSignDotProd(a, b Point) int {
 	// Reference:
 	//   Error Estimation Of Floating-Point Summation And Dot Product, Rump
 	//   2011
-	const maxError = 3.046875 * epsilon
+	const maxError = 3.046875 * dblEpsilon
 
 	na := a.Dot(b.Vector)
 	if math.Abs(na) <= maxError {
@@ -844,7 +870,7 @@ func triageIntersectionOrdering(a, b, c, d, m, n Point) int {
 	// only interested in the sign of this operation, as long as the relative
 	// error is < 1 we can never get a sign flip, which would make this exact for
 	// our purposes.
-	const maxError = 32 * epsilon
+	const maxError = 32 * dblEpsilon
 
 	mdota := m.Dot(a.Vector)
 	mdotb := m.Dot(b.Vector)

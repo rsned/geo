@@ -32,6 +32,14 @@ var (
 		"When set, use brute force algorithms in benchmarking.")
 )
 
+const (
+	// epsilon is a small number that represents a reasonable level of noise between two
+	// values that can be considered to be equal.
+	// C++ FLT_EPSILON is actually to 1.1920928955078125e-7, but this requires
+	// overriding the value specifically in a whole lot of tests.
+	epsilon = 1e-15
+)
+
 // float64Eq reports whether the two values are within the default epsilon.
 func float64Eq(x, y float64) bool { return float64Near(x, y, epsilon) }
 
