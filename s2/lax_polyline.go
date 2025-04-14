@@ -14,7 +14,8 @@
 
 package s2
 
-const laxPolylineTypeTag = 4
+// Shape interface enforcement
+var _ Shape = (*LaxPolyline)(nil)
 
 // LaxPolyline represents a polyline. It is similar to Polyline except
 // that adjacent vertices are allowed to be identical or antipodal, and
