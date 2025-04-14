@@ -120,6 +120,14 @@ func NewShapeIndexCell(numShapes int) *ShapeIndexCell {
 	}
 }
 
+// clipped returns the clipped shape at the given index. Shapes are kept sorted in
+// increasing order of shape id.
+//
+// REQUIRES: 0 <= i < len(shapes)
+func (s *ShapeIndexCell) clipped(i int) *clippedShape {
+	return s.shapes[i]
+}
+
 // numEdges reports the total number of edges in all clipped shapes in this cell.
 func (s *ShapeIndexCell) numEdges() int {
 	var e int
